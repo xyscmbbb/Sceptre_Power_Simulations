@@ -43,6 +43,21 @@ discovery_pairs_split <- read_tsv(snakemake@input$discovery_pairs_split, col_nam
 grna_target_data_frame <- read_tsv(snakemake@input$grna_target_data_frame)
 response_matrix <- readRDS(snakemake@input$raw_counts)
 
+# Reduce raw_counts to the one thing this script actually needs from it -- the
+# per-gene mean, for the average_expression_all_cells column -- and release it
+# immediately. It is otherwise held for the whole rep loop in EVERY split: at a
+# full transcriptome that is 6.7 GB x 10 concurrent splits = ~67 GB of duplicated
+# memory, for a single rowMeans() call.
+#
+# Indexing BY NAME also keeps this correct when simulated_sce_disp has been
+# subset to the tested genes while raw_counts still spans the transcriptome --
+# the two no longer have the same number of rows, and positional use would
+# silently mismatch (or, as it did, error out after the reps have all run).
+gene_means_all <- rowMeans(response_matrix)
+gene_means <- gene_means_all[rownames(simulated_sce_disp)]
+stopifnot(!anyNA(gene_means))
+rm(response_matrix, gene_means_all); gc(verbose = FALSE)
+
 
 # Load params
 effect_size <- 1 - as.numeric(snakemake@params$effect_size)
@@ -146,7 +161,7 @@ combined_data <- data.frame(
   response_id = rownames(simulated_sce_disp),
   disp_outlier_deseq2 = rowData(simulated_sce_disp)[, "disp_outlier_deseq2"],
   dispersion = rowData(simulated_sce_disp)[, "dispersion"],
-  average_expression_all_cells = rowMeans(response_matrix),
+  average_expression_all_cells = gene_means,
   stringsAsFactors = FALSE
 )
 
