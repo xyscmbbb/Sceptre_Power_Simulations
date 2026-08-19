@@ -54,6 +54,8 @@ rule attach_dispersions:
     dispersion_params = "results/{sample}/dispersion_params.rds"
   output:
     simulated_sce_disp = "results/{sample}/simulated_sce_disp.rds"
+  params:
+    subset_to_tested = config.get("fit_dispersions", {}).get("subset_to_tested", True)
   log:
     "results/{sample}/logs/attach_dispersions.log"
   conda:

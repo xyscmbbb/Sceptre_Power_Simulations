@@ -22,8 +22,30 @@ rowData(simulated_sce)[, "dispersion"] <- params$dispersion
 rowData(simulated_sce)[, "disp_outlier_deseq2"] <- params$disp_outlier_deseq2
 colData(simulated_sce)[, "size_factors"] <- params$size_factors
 
-message(sprintf("attached: %d genes, %d with a fitted dispersion (these become the pair list)",
-                nrow(simulated_sce), sum(!is.na(params$dispersion))))
+### SUBSET TO THE TESTED GENES ==============================================
+# NA dispersion already excludes a gene from the PAIR LIST
+# (split_target_response_pairs.R drops is.na(dispersion) responses), but it does
+# NOT exclude it from the SIMULATION: create_simulated_sceptre_object.R and
+# pert_input() both walk every row of this object, so an untested gene is still
+# drawn for, at full cost, via rnbinom(mu = NA, size = 1/NA) -> a column of NAs.
+#
+# With map_genes restricting the fit, that is the difference between simulating
+# 2,021 genes and 34,597 -- ~17x the work per rep, plus a response matrix that is
+# mostly NA. So drop those rows here, which makes the simulated gene set and the
+# tested gene set the same thing by construction.
+#
+# Safe because nothing downstream needs the dropped rows: the sceptre covariates
+# (response_n_umis / response_n_nonzero) are computed from the FULL raw_counts
+# in create_simulated_sceptre_object.R, not from this object, and
+# average_expression_all_cells is left_join()ed by response_id, so extra rows in
+# raw_counts are simply unused.
+keep <- !is.na(params$dispersion)
+message(sprintf("attached: %d genes, %d with a fitted dispersion", nrow(simulated_sce), sum(keep)))
+if (isTRUE(as.logical(snakemake@params$subset_to_tested)) && any(!keep)) {
+  simulated_sce <- simulated_sce[keep, ]
+  message(sprintf("subset to %d tested genes (dropped %d without a fitted dispersion)",
+                  nrow(simulated_sce), sum(!keep)))
+}
 
 saveRDS(simulated_sce, file = snakemake@output$simulated_sce_disp)
 
