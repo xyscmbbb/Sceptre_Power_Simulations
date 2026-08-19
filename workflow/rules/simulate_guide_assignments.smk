@@ -26,7 +26,7 @@ rule fit_dispersions:
     raw_counts = "resources/{sample}/raw_counts.rds",
     simulated_sce = "results/{sample}/simulated_sce.rds"
   output:
-    simulated_sce_disp = "results/{sample}/simulated_sce_disp.rds"
+    dispersion_params = "results/{sample}/dispersion_params.rds"
   params:
     gene_chunk = config.get("fit_dispersions", {}).get("gene_chunk", 500),
     n_trend_genes = config.get("fit_dispersions", {}).get("n_trend_genes", 0),
@@ -43,3 +43,23 @@ rule fit_dispersions:
     time = "4:00:00"
   script:
     "../scripts/fit_negbinom_distr.R"
+
+# Fold the DESeq2 parameters onto the SCE. Separate from fit_dispersions so that
+# S4 objects are only ever written by the env that will read them back: the
+# DESeq2 env is a newer R/Bioconductor than the sceptre env, and an SCE written
+# there fails to deserialize here ("unable to find required package 'Seqinfo'").
+rule attach_dispersions:
+  input:
+    simulated_sce = "results/{sample}/simulated_sce.rds",
+    dispersion_params = "results/{sample}/dispersion_params.rds"
+  output:
+    simulated_sce_disp = "results/{sample}/simulated_sce_disp.rds"
+  log:
+    "results/{sample}/logs/attach_dispersions.log"
+  conda:
+    "../envs/sceptre_power_simulations.yml"
+  resources:
+    mem_mb = 8000,
+    time = "0:30:00"
+  script:
+    "../scripts/attach_dispersions.R"

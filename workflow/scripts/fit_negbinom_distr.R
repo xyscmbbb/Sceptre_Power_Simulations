@@ -98,8 +98,26 @@ sce <- fit_negbinom_deseq2_chunked(response_matrix,
                                    n_cores = as.integer(snakemake@threads))
 
 
-# save output sce to file
-saveRDS(sce, file = snakemake@output$simulated_sce_disp)
+### SAVE PLAIN PARAMETERS, NOT AN SCE =======================================
+# This rule runs in the DESeq2 conda env, which is a newer R/Bioconductor than
+# the sceptre env that consumes the result. Writing a SingleCellExperiment here
+# bakes in that env's S4 class definitions (e.g. the Seqinfo package, split out
+# of GenomeInfoDb in recent Bioc), and the older env then cannot deserialize it:
+#   "unable to find required package 'Seqinfo'"
+# Reading old -> new is fine; writing new -> old is not. So emit plain atomic
+# vectors, which carry no class baggage, and let attach_dispersions.R (running
+# in the sceptre env) fold them back onto the SCE that env created itself.
+#
+# The dispersionFunction is deliberately NOT carried across: it is a closure
+# over the DESeq2 namespace, nothing downstream reads it (it is only ever
+# written), and serialising it would reintroduce the same coupling.
+saveRDS(list(
+  gene_ids            = rownames(response_matrix),
+  mean                = rowData(sce)[, "mean"],
+  dispersion          = rowData(sce)[, "dispersion"],
+  disp_outlier_deseq2 = rowData(sce)[, "disp_outlier_deseq2"],
+  size_factors        = colData(sce)[, "size_factors"]
+), file = snakemake@output$dispersion_params)
 
 # close log file connection
 sink()
