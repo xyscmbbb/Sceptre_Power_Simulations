@@ -15,7 +15,7 @@ rule split_target_response_pairs:
   conda:
     "../envs/sceptre_power_simulations.yml"
   resources:
-    mem = "16G",
+    mem_mb = 16000,
     time = "1:00:00"
   script:
     "../scripts/split_target_response_pairs.R"
@@ -35,7 +35,7 @@ rule create_simulated_sceptre_object:
   conda:
     "../envs/sceptre_power_simulations.yml"
   resources:
-    mem = "32G",
+    mem_mb = 32000,
     time = "2:00:00"
   script:
     "../scripts/create_simulated_sceptre_object.R"
@@ -54,12 +54,14 @@ rule sceptre_power_analysis:
     "results/{sample}/power_analysis_split/power_analysis_output_{split}.tsv"
   params:
     effect_size = config["sceptre_power_analysis"]["effect_size"],
-    reps = config["sceptre_power_analysis"]["reps"]
+    reps = config["sceptre_power_analysis"]["reps"],
+    gene_chunk_size = config["sceptre_power_analysis"].get("gene_chunk_size", 1000)
   log: "results/{sample}/logs/sceptre_power_analysis_{split}.log"
   conda:
     "../envs/sceptre_power_simulations.yml"
   resources:
-    mem = "8G",
+    # bumped from 8G: observed OOM-kills in prod at this size, pending empirical re-measurement
+    mem_mb = 16000,
     time = "1:00:00"
   script:
     "../scripts/sceptre_power_analysis.R"
@@ -75,7 +77,7 @@ rule combine_sceptre_power_analysis:
  conda:
    "../envs/sceptre_power_simulations.yml"
  resources:
-   mem = "32G",
+   mem_mb = 32000,
    time = "2:00:00"
  script:
    "../scripts/combine_sceptre_power_analysis.R"
@@ -95,7 +97,7 @@ rule compute_power_from_simulations:
   conda:
     "../envs/sceptre_power_simulations.yml"
   resources:
-    mem = "24G",
+    mem_mb = 24000,
     time = "1:00:00"
   script:
     "../scripts/compute_power_from_simulations.R"

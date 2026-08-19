@@ -15,10 +15,15 @@ sink(log, type = "message")
 
 ### LOADING FILES ============================================================
 
-# Download Sceptre
-message("Installing Sceptre")
-devtools::install_github("katsevich-lab/sceptre")
-message("Sceptre Installation Complete")
+# Download Sceptre (skip if already installed -- avoids N concurrent jobs each
+# racing a from-source recompile of the same package into the same conda env)
+if (!requireNamespace("sceptre", quietly = TRUE)) {
+  message("Installing Sceptre")
+  devtools::install_github("katsevich-lab/sceptre")
+  message("Sceptre Installation Complete")
+} else {
+  message("Sceptre already installed (", as.character(utils::packageVersion("sceptre")), "); skipping install_github")
+}
 
 # Load in the necessary packages
 message("Loading packages")

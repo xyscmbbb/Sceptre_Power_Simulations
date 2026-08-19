@@ -22,13 +22,19 @@ suppressPackageStartupMessages({
   library(sceptre)
   source(file.path(snakemake@scriptdir, "R_functions/differential_expression_fun.R"))
   source(file.path(snakemake@scriptdir, "R_functions/power_simulations_fun.R"))
+  source(file.path(snakemake@scriptdir, "R_functions/chunked_simulation_fun.R"))
 })
 
-# Download Sceptre
+# Download Sceptre (skip if already installed -- avoids N concurrent jobs each
+# racing a from-source recompile of the same package into the same conda env)
 library(devtools)
-message("Installing Sceptre")
-devtools::install_github("katsevich-lab/sceptre")
-message("Sceptre Installation Complete")
+if (!requireNamespace("sceptre", quietly = TRUE)) {
+  message("Installing Sceptre")
+  devtools::install_github("katsevich-lab/sceptre")
+  message("Sceptre Installation Complete")
+} else {
+  message("Sceptre already installed (", as.character(utils::packageVersion("sceptre")), "); skipping install_github")
+}
 
 # Load inputs
 simulated_sceptre_object <- readRDS(snakemake@input$simulated_sceptre_object)
@@ -42,6 +48,10 @@ response_matrix <- readRDS(snakemake@input$raw_counts)
 effect_size <- 1 - as.numeric(snakemake@params$effect_size)
 reps <- snakemake@params$reps
 guide_sd <- 0.13
+# genes per block for the chunked count generator (Fix B). Dense working set is
+# gene_chunk_size x n_cells doubles, x3 concurrent -- 1,000 x 46,000 ~= 368 MB
+# each. Independent of the total gene count.
+gene_chunk_size <- as.integer(snakemake@params$gene_chunk_size)
 
 
 ### PRECOMPUTATIONS TO RUN SIMULATIONS ======================================
@@ -78,16 +88,19 @@ for (pert in perts) {
   # Loop through each rep
   for (rep in seq(reps)) {
     
-    # Create and center effect size matrices
-    es_mat <- create_effect_size_matrix(grna_pert_status, pert_guides = pert_guides,
-                                        gene_effect_sizes = effect_sizes, guide_sd = guide_sd)
-    es_mat <- center_effect_size_matrix(es_mat, pert_status = pert_status, gene_effect_sizes = effect_sizes)
-    es_mat_use <- es_mat[, colnames(assay(pert_object, "counts"))]
-
-    # Simulate Counts
-    message("Simulating Counts")
-    sim_counts <- sim_tapseq_sce(pert_object, effect_size_mat = es_mat_use)
-    simulated_response_matrix <- as(assay(sim_counts, "counts"), "RsparseMatrix")
+    # FIX B: generate the counts in gene blocks rather than materialising three
+    # dense n_genes x n_cells doubles (mu, the effect-size matrix, and the
+    # rnbinom draw). Peak becomes O(chunk_size x n_cells), independent of the
+    # gene count. Statistically identical, not bit-identical -- chunking
+    # reorders the RNG stream, but the simulation path has no set.seed() at all,
+    # so two runs of the ORIGINAL code already differ by the same amount.
+    # Validated 2026-08-19: a 3-arm test (baseline x2 for the noise floor, vs
+    # chunked) put the chunked arm exactly on the noise floor.
+    message("Simulating Counts (gene-chunked)")
+    simulated_response_matrix <- simulate_response_matrix_chunked(
+      pert_object, grna_pert_status = grna_pert_status, pert_guides = pert_guides,
+      effect_sizes = effect_sizes, guide_sd = guide_sd, chunk_size = gene_chunk_size
+    )
 
 
     # Save a temp sceptre object

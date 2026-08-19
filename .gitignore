@@ -1,0 +1,5 @@
+# Snakemake / run artifacts
+.snakemake/
+RDA_objects/
+results/
+resources/*/raw_counts.rds

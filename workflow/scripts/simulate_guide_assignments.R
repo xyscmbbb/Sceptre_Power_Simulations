@@ -22,11 +22,16 @@ suppressPackageStartupMessages({
   source(file.path(snakemake@scriptdir, "R_functions/power_simulations_fun.R"))
 })
 
-# Download Sceptre
-message("Installing Sceptre")
+# Download Sceptre (skip if already installed -- avoids N concurrent jobs each
+# racing a from-source recompile of the same package into the same conda env)
 library(devtools)
-devtools::install_github("katsevich-lab/sceptre")
-message("Sceptre Installation Complete")
+if (!requireNamespace("sceptre", quietly = TRUE)) {
+  message("Installing Sceptre")
+  devtools::install_github("katsevich-lab/sceptre")
+  message("Sceptre Installation Complete")
+} else {
+  message("Sceptre already installed (", as.character(utils::packageVersion("sceptre")), "); skipping install_github")
+}
 library(sceptre)
 
 # Load in input and the response matrix
@@ -46,8 +51,15 @@ message("Creating the sce object")
 # Estimate how many cells we need in our sce object
 num_cells <- num_cells_per_pert[length(num_cells_per_pert)] * 5 + 6000 # The 6000 is to make sure there are enough n_ctrl cells but this calculation is arbitrary otherwise
 
-# Create the raw matrix with the new number of cells
-counts <- matrix(0, nrow=nrow(response_matrix), ncol=num_cells)
+# Create the raw matrix with the new number of cells.
+# FIX A: sparse, not a dense all-zero base R matrix. This assay is NEVER read
+# for its values -- the only consumer is
+# colnames(assay(pert_object, "counts")) in sceptre_power_analysis.R -- so it is
+# a pure dimnames placeholder. Dense it costs nrow x num_cells x 8 B, which is
+# serialised into simulated_sce_disp.rds and re-loaded by EVERY split:
+# 13.2 GB per split at a full transcriptome (34,597 x 46,000). Sparse is
+# bit-identical for every downstream consumer.
+counts <- Matrix::Matrix(0, nrow = nrow(response_matrix), ncol = num_cells, sparse = TRUE)
 colnames(counts) <- paste("cell", 1:num_cells, sep="")
 rownames(counts) <- rownames(response_matrix)
 
